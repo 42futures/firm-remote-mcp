@@ -21,6 +21,8 @@ use crate::git::GitConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load .env file if present (ignored on missing)
+    dotenvy::dotenv().ok();
     env_logger::init();
 
     // 1. Parse config
