@@ -1,0 +1,35 @@
+[package]
+name = "firm-remote-mcp"
+version = "0.1.0"
+edition = "2024"
+description = "Remote MCP server for Firm workspaces, deployed on Cloud Run."
+license = "AGPL-3.0"
+
+[[bin]]
+name = "firm-remote-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# Firm workspace
+firm_core = { git = "https://github.com/42futures/firm", branch = "main" }
+firm_lang = { git = "https://github.com/42futures/firm", branch = "main" }
+firm_mcp = { git = "https://github.com/42futures/firm", branch = "main" }
+
+# MCP server with Streamable HTTP transport
+rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server"] }
+
+# Git operations
+git2 = "0.20"
+
+# HTTP / async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio-util = "0.7"
+axum = "0.8"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
