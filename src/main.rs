@@ -1,3 +1,4 @@
+mod auth;
 mod config;
 mod git;
 mod server;
@@ -6,14 +7,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::Body;
-use axum::extract::Request;
-use axum::middleware::Next;
-use axum::response::Response;
 use firm_mcp::FirmMcpServer;
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService,
-    session::local::LocalSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -21,7 +17,6 @@ use crate::git::GitConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load .env file if present (ignored on missing)
     dotenvy::dotenv().ok();
     env_logger::init();
 
@@ -85,16 +80,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mcp_config,
     );
 
-    // 10. Set up Axum router with auth middleware
-    let api_key = config.api_key.clone();
-    let app = axum::Router::new()
+    // 10. Set up OAuth state
+    let oauth_state = auth::OAuthState::new(
+        config.oauth_client_id.clone(),
+        config.oauth_client_secret.clone(),
+        config.server_url.clone(),
+    );
+    auth::spawn_token_cleanup(oauth_state.clone());
+
+    // 11. Build router: public OAuth routes + protected MCP route
+    let oauth = oauth_state.clone();
+    let protected = axum::Router::new()
         .nest_service("/mcp", mcp_service)
         .layer(axum::middleware::from_fn(move |req, next| {
-            let key = api_key.clone();
-            auth_middleware(key, req, next)
+            let state = oauth.clone();
+            auth::bearer_auth_middleware(state, req, next)
         }));
 
-    // 11. Start server
+    let public = axum::Router::new()
+        .route(
+            "/.well-known/oauth-protected-resource",
+            axum::routing::get(auth::protected_resource_metadata),
+        )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            axum::routing::get(auth::authorization_server_metadata),
+        )
+        .route("/authorize", axum::routing::get(auth::authorize))
+        .route("/token", axum::routing::post(auth::token))
+        .route("/register", axum::routing::post(auth::register))
+        .with_state(oauth_state);
+
+    let app = public.merge(protected);
+
+    // 12. Start server
     let addr = format!("0.0.0.0:{}", config.port);
     log::info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -104,21 +123,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("Server shut down");
     Ok(())
-}
-
-async fn auth_middleware(expected_key: String, req: Request, next: Next) -> Response {
-    let api_key = req
-        .headers()
-        .get("x-api-key")
-        .and_then(|v| v.to_str().ok());
-
-    match api_key {
-        Some(key) if key == expected_key => next.run(req).await,
-        _ => Response::builder()
-            .status(401)
-            .body(Body::from("Unauthorized"))
-            .unwrap(),
-    }
 }
 
 async fn shutdown_signal(ct: CancellationToken) {

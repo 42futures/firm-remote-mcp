@@ -9,8 +9,13 @@ pub struct Config {
     pub branch: String,
     /// GitHub PAT for git push authentication.
     pub github_token: String,
-    /// API key for authenticating MCP clients.
-    pub api_key: String,
+    /// OAuth client ID (entered in Claude connector UI).
+    pub oauth_client_id: String,
+    /// OAuth client secret (entered in Claude connector UI).
+    pub oauth_client_secret: String,
+    /// Canonical externally-reachable server URL (e.g. "https://firm-mcp-xyz.a.run.app").
+    /// Used in OAuth metadata and resource indicator validation.
+    pub server_url: String,
     /// HTTP listen port.
     pub port: u16,
     /// Optional subdirectory within the repo containing the Firm workspace.
@@ -23,8 +28,12 @@ impl Config {
             env::var("REPO_URL").map_err(|_| "REPO_URL environment variable is required")?;
         let github_token = env::var("GITHUB_TOKEN")
             .map_err(|_| "GITHUB_TOKEN environment variable is required")?;
-        let api_key =
-            env::var("API_KEY").map_err(|_| "API_KEY environment variable is required")?;
+        let oauth_client_id = env::var("OAUTH_CLIENT_ID")
+            .map_err(|_| "OAUTH_CLIENT_ID environment variable is required")?;
+        let oauth_client_secret = env::var("OAUTH_CLIENT_SECRET")
+            .map_err(|_| "OAUTH_CLIENT_SECRET environment variable is required")?;
+        let server_url =
+            env::var("SERVER_URL").map_err(|_| "SERVER_URL environment variable is required")?;
 
         let branch = env::var("BRANCH").unwrap_or_else(|_| "mcp".to_string());
 
@@ -35,11 +44,16 @@ impl Config {
 
         let workspace_subdir = env::var("WORKSPACE_SUBDIR").ok();
 
+        // Strip trailing slash from server_url for consistency
+        let server_url = server_url.trim_end_matches('/').to_string();
+
         Ok(Config {
             repo_url,
             branch,
             github_token,
-            api_key,
+            oauth_client_id,
+            oauth_client_secret,
+            server_url,
             port,
             workspace_subdir,
         })

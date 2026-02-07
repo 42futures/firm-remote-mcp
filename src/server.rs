@@ -164,22 +164,36 @@ impl RemoteFirmServer {
 
     // -- Build tool --
 
-    #[tool(description = "Rebuild and validate the workspace. \
+    #[tool(description = "Sync with remote and rebuild the workspace. \
+        Fetches the latest state from the remote mcp branch (or main if mcp was deleted after a PR merge). \
         Returns the current status: number of entities and schemas if valid, \
         or validation errors if the workspace is broken. \
-        Use this to check workspace health or refresh state after external changes.")]
+        Call this before starting work to ensure you have the latest data.")]
     async fn build(
         &self,
         #[allow(unused_variables)] Parameters(params): Parameters<BuildParams>,
     ) -> Result<CallToolResult, McpError> {
-        debug!("Tool: build");
+        debug!("Tool: build (with git sync)");
+
+        // Fetch origin and reset local branch to match remote
+        let mut warnings = Vec::new();
+        if let Err(e) = git::clone_or_fetch(self.git_config.clone()).await {
+            warnings.push(format!("Git fetch failed: {}", e));
+        } else if let Err(e) = git::sync_branch(self.git_config.clone()).await {
+            warnings.push(format!("Git sync failed: {}", e));
+        }
+
         match self.firm.rebuild().await {
             Ok(_) => {
                 let state = self.firm.state().lock().await;
-                Ok(tools::build::success_result(
+                let mut result = tools::build::success_result(
                     state.build.entities.len(),
                     state.build.schemas.len(),
-                ))
+                );
+                for warn in warnings {
+                    result.content.push(Content::text(warn));
+                }
+                Ok(result)
             }
             Err(e) => Ok(tools::build::error_result(&e.to_string())),
         }

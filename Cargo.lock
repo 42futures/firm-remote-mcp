@@ -447,6 +447,7 @@ name = "firm-remote-mcp"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "dotenvy",
  "env_logger",
  "firm_core",
@@ -454,11 +455,14 @@ dependencies = [
  "firm_mcp",
  "git2",
  "log",
+ "rand 0.9.2",
  "rmcp",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tokio-util",
+ "url",
 ]
 
 [[package]]

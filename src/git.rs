@@ -128,6 +128,40 @@ fn checkout_mcp_branch_sync(config: &GitConfig) -> Result<(), GitError> {
     Ok(())
 }
 
+/// Fetch and reset local branch to match origin. If origin/mcp exists, reset to that.
+/// If it doesn't (e.g., branch deleted after PR merge), reset to origin/main.
+pub async fn sync_branch(config: GitConfig) -> Result<(), GitError> {
+    tokio::task::spawn_blocking(move || sync_branch_sync(&config))
+        .await
+        .map_err(GitError::Join)?
+}
+
+fn sync_branch_sync(config: &GitConfig) -> Result<(), GitError> {
+    let repo = Repository::open(&config.repo_path)?;
+
+    // Try origin/mcp first, fall back to origin/main
+    let remote_ref = format!("refs/remotes/origin/{}", config.branch);
+    let target = repo
+        .find_reference(&remote_ref)
+        .or_else(|_| {
+            log::info!(
+                "Remote branch '{}' not found, using origin/main",
+                config.branch
+            );
+            repo.find_reference("refs/remotes/origin/main")
+        })?;
+
+    let commit = target.peel_to_commit()?;
+
+    // Reset local branch to the remote commit
+    let refname = format!("refs/heads/{}", config.branch);
+    repo.reference(&refname, commit.id(), true, "sync: reset to remote")?;
+    repo.set_head(&refname)?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
+    log::info!("Synced branch '{}' to {}", config.branch, &commit.id());
+    Ok(())
+}
+
 /// Merge origin/main into the current (mcp) branch. Errors on conflicts.
 pub async fn merge_main(config: GitConfig) -> Result<(), GitError> {
     tokio::task::spawn_blocking(move || merge_main_sync(&config))
@@ -229,10 +263,10 @@ fn commit_and_push_sync(config: &GitConfig, message: &str) -> Result<(), GitErro
     repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])?;
     log::info!("Committed: {}", message);
 
-    // Push
+    // Push (force-push: single-user branch, safe after squash-merge cycles)
     let mut remote = repo.find_remote("origin")?;
     let refspec = format!(
-        "refs/heads/{}:refs/heads/{}",
+        "+refs/heads/{}:refs/heads/{}",
         config.branch, config.branch
     );
     let mut opts = push_options(&config.token);
