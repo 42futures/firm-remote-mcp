@@ -85,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.oauth_client_id.clone(),
         config.oauth_client_secret.clone(),
         config.server_url.clone(),
+        config.jwt_signing_key.clone(),
     );
     auth::spawn_token_cleanup(oauth_state.clone());
 

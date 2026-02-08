@@ -8,13 +8,14 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Json, Response};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use rand::Rng;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 const AUTH_CODE_TTL: Duration = Duration::from_secs(60);
-const ACCESS_TOKEN_TTL: Duration = Duration::from_secs(3600);
-const REFRESH_TOKEN_TTL: Duration = Duration::from_secs(7 * 86400);
+const ACCESS_TOKEN_TTL_SECS: u64 = 3600;
+const REFRESH_TOKEN_TTL_SECS: u64 = 7 * 86400;
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 
 // -- Data structures --
@@ -27,17 +28,13 @@ struct AuthCode {
     created_at: Instant,
 }
 
-#[derive(Clone)]
-struct AccessToken {
-    created_at: Instant,
-    expires_in: Duration,
-}
-
-#[derive(Clone)]
-struct RefreshToken {
-    client_id: String,
-    created_at: Instant,
-    expires_in: Duration,
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Claims {
+    sub: String, // "access" or "refresh"
+    exp: u64,
+    iat: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
 }
 
 /// Shared OAuth state.
@@ -46,20 +43,70 @@ pub struct OAuthState {
     client_id: String,
     client_secret: String,
     server_url: String,
+    encoding_key: EncodingKey,
+    decoding_key: DecodingKey,
     codes: Arc<Mutex<HashMap<String, AuthCode>>>,
-    access_tokens: Arc<Mutex<HashMap<String, AccessToken>>>,
-    refresh_tokens: Arc<Mutex<HashMap<String, RefreshToken>>>,
 }
 
 impl OAuthState {
-    pub fn new(client_id: String, client_secret: String, server_url: String) -> Self {
+    pub fn new(
+        client_id: String,
+        client_secret: String,
+        server_url: String,
+        jwt_signing_key: String,
+    ) -> Self {
+        let encoding_key = EncodingKey::from_secret(jwt_signing_key.as_bytes());
+        let decoding_key = DecodingKey::from_secret(jwt_signing_key.as_bytes());
         Self {
             client_id,
             client_secret,
             server_url,
+            encoding_key,
+            decoding_key,
             codes: Default::default(),
-            access_tokens: Default::default(),
-            refresh_tokens: Default::default(),
+        }
+    }
+
+    fn issue_access_token(&self) -> Result<String, jsonwebtoken::errors::Error> {
+        let now = jsonwebtoken::get_current_timestamp();
+        let claims = Claims {
+            sub: "access".to_string(),
+            iat: now,
+            exp: now + ACCESS_TOKEN_TTL_SECS,
+            client_id: None,
+        };
+        encode(&Header::default(), &claims, &self.encoding_key)
+    }
+
+    fn issue_refresh_token(
+        &self,
+        client_id: &str,
+    ) -> Result<String, jsonwebtoken::errors::Error> {
+        let now = jsonwebtoken::get_current_timestamp();
+        let claims = Claims {
+            sub: "refresh".to_string(),
+            iat: now,
+            exp: now + REFRESH_TOKEN_TTL_SECS,
+            client_id: Some(client_id.to_string()),
+        };
+        encode(&Header::default(), &claims, &self.encoding_key)
+    }
+
+    fn validate_access_token(&self, token: &str) -> bool {
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.set_required_spec_claims(&["exp", "sub", "iat"]);
+        match decode::<Claims>(token, &self.decoding_key, &validation) {
+            Ok(data) => data.claims.sub == "access",
+            Err(_) => false,
+        }
+    }
+
+    fn validate_refresh_token(&self, token: &str) -> Option<String> {
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.set_required_spec_claims(&["exp", "sub", "iat"]);
+        match decode::<Claims>(token, &self.decoding_key, &validation) {
+            Ok(data) if data.claims.sub == "refresh" => data.claims.client_id,
+            _ => None,
         }
     }
 }
@@ -292,30 +339,20 @@ async fn handle_auth_code_grant(state: &OAuthState, params: &TokenRequest) -> Re
         return token_error(400, "invalid_grant", "PKCE verification failed");
     }
 
-    // Issue tokens
-    let access = generate_token(32);
-    let refresh = generate_token(32);
-
-    state.access_tokens.lock().await.insert(
-        access.clone(),
-        AccessToken {
-            created_at: Instant::now(),
-            expires_in: ACCESS_TOKEN_TTL,
-        },
-    );
-    state.refresh_tokens.lock().await.insert(
-        refresh.clone(),
-        RefreshToken {
-            client_id: auth_code.client_id,
-            created_at: Instant::now(),
-            expires_in: REFRESH_TOKEN_TTL,
-        },
-    );
+    // Issue JWT tokens
+    let access = match state.issue_access_token() {
+        Ok(t) => t,
+        Err(e) => return token_error(500, "server_error", &format!("Token signing failed: {}", e)),
+    };
+    let refresh = match state.issue_refresh_token(&auth_code.client_id) {
+        Ok(t) => t,
+        Err(e) => return token_error(500, "server_error", &format!("Token signing failed: {}", e)),
+    };
 
     Json(serde_json::json!({
         "access_token": access,
         "token_type": "Bearer",
-        "expires_in": ACCESS_TOKEN_TTL.as_secs(),
+        "expires_in": ACCESS_TOKEN_TTL_SECS,
         "refresh_token": refresh,
     }))
     .into_response()
@@ -327,41 +364,26 @@ async fn handle_refresh_grant(state: &OAuthState, params: &TokenRequest) -> Resp
         None => return token_error(400, "invalid_request", "Missing refresh_token"),
     };
 
-    // Consume refresh token (rotate)
-    let refresh = state.refresh_tokens.lock().await.remove(refresh_str);
-    let refresh = match refresh {
-        Some(r) => r,
+    // Validate refresh JWT
+    let client_id = match state.validate_refresh_token(refresh_str) {
+        Some(id) => id,
         None => return token_error(400, "invalid_grant", "Invalid or expired refresh token"),
     };
 
-    if refresh.created_at.elapsed() > refresh.expires_in {
-        return token_error(400, "invalid_grant", "Refresh token expired");
-    }
-
-    // Issue new tokens
-    let new_access = generate_token(32);
-    let new_refresh = generate_token(32);
-
-    state.access_tokens.lock().await.insert(
-        new_access.clone(),
-        AccessToken {
-            created_at: Instant::now(),
-            expires_in: ACCESS_TOKEN_TTL,
-        },
-    );
-    state.refresh_tokens.lock().await.insert(
-        new_refresh.clone(),
-        RefreshToken {
-            client_id: refresh.client_id,
-            created_at: Instant::now(),
-            expires_in: REFRESH_TOKEN_TTL,
-        },
-    );
+    // Issue new JWT tokens
+    let new_access = match state.issue_access_token() {
+        Ok(t) => t,
+        Err(e) => return token_error(500, "server_error", &format!("Token signing failed: {}", e)),
+    };
+    let new_refresh = match state.issue_refresh_token(&client_id) {
+        Ok(t) => t,
+        Err(e) => return token_error(500, "server_error", &format!("Token signing failed: {}", e)),
+    };
 
     Json(serde_json::json!({
         "access_token": new_access,
         "token_type": "Bearer",
-        "expires_in": ACCESS_TOKEN_TTL.as_secs(),
+        "expires_in": ACCESS_TOKEN_TTL_SECS,
         "refresh_token": new_refresh,
     }))
     .into_response()
@@ -413,14 +435,7 @@ pub async fn bearer_auth_middleware(
         }
     };
 
-    let valid = {
-        let tokens = state.access_tokens.lock().await;
-        tokens
-            .get(token)
-            .is_some_and(|t| t.created_at.elapsed() < t.expires_in)
-    };
-
-    if valid {
+    if state.validate_access_token(token) {
         next.run(req).await
     } else {
         Response::builder()
@@ -431,7 +446,7 @@ pub async fn bearer_auth_middleware(
     }
 }
 
-// -- Background cleanup --
+// -- Background cleanup (auth codes only — JWTs are self-expiring) --
 
 pub fn spawn_token_cleanup(state: OAuthState) {
     tokio::spawn(async move {
@@ -443,16 +458,6 @@ pub fn spawn_token_cleanup(state: OAuthState) {
                 .lock()
                 .await
                 .retain(|_, c| c.created_at.elapsed() < AUTH_CODE_TTL);
-            state
-                .access_tokens
-                .lock()
-                .await
-                .retain(|_, t| t.created_at.elapsed() < t.expires_in);
-            state
-                .refresh_tokens
-                .lock()
-                .await
-                .retain(|_, t| t.created_at.elapsed() < t.expires_in);
         }
     });
 }

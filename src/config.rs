@@ -13,6 +13,8 @@ pub struct Config {
     pub oauth_client_id: String,
     /// OAuth client secret (entered in Claude connector UI).
     pub oauth_client_secret: String,
+    /// Secret key for signing JWT access/refresh tokens.
+    pub jwt_signing_key: String,
     /// Canonical externally-reachable server URL (e.g. "https://firm-mcp-xyz.a.run.app").
     /// Used in OAuth metadata and resource indicator validation.
     pub server_url: String,
@@ -32,6 +34,8 @@ impl Config {
             .map_err(|_| "OAUTH_CLIENT_ID environment variable is required")?;
         let oauth_client_secret = env::var("OAUTH_CLIENT_SECRET")
             .map_err(|_| "OAUTH_CLIENT_SECRET environment variable is required")?;
+        let jwt_signing_key = env::var("JWT_SIGNING_KEY")
+            .map_err(|_| "JWT_SIGNING_KEY environment variable is required")?;
         let server_url =
             env::var("SERVER_URL").map_err(|_| "SERVER_URL environment variable is required")?;
 
@@ -53,6 +57,7 @@ impl Config {
             github_token,
             oauth_client_id,
             oauth_client_secret,
+            jwt_signing_key,
             server_url,
             port,
             workspace_subdir,

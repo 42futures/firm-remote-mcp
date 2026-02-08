@@ -46,9 +46,22 @@ upsert_secret() {
   fi
 }
 
+ensure_secret() {
+  local name="$1"
+  if gcloud secrets describe "${name}" --project "${PROJECT_ID}" &>/dev/null; then
+    echo "    Secret '${name}' exists"
+  else
+    echo "    Generating secret '${name}'..."
+    openssl rand -base64 48 | gcloud secrets create "${name}" \
+      --data-file=- \
+      --project "${PROJECT_ID}" --quiet
+  fi
+}
+
 echo "==> Syncing secrets..."
 upsert_secret "github-token" "${GITHUB_TOKEN}"
 upsert_secret "oauth-client-secret" "${OAUTH_CLIENT_SECRET}"
+ensure_secret "jwt-signing-key"
 
 # --- Resolve SERVER_URL ---
 if [ -z "${SERVER_URL:-}" ]; then
@@ -79,17 +92,18 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars "RUST_LOG=info" \
   --set-secrets "GITHUB_TOKEN=github-token:latest" \
   --set-secrets "OAUTH_CLIENT_SECRET=oauth-client-secret:latest" \
+  --set-secrets "JWT_SIGNING_KEY=jwt-signing-key:latest" \
   --max-instances 1 \
   --timeout 300 \
   --quiet
 
 echo ""
 echo "=== Deployment complete ==="
-echo "Service URL:      ${SERVICE_URL}"
-echo "MCP endpoint:     ${SERVICE_URL}/mcp"
+echo "Server URL:      ${SERVER_URL}"
+echo "MCP endpoint:     ${SERVER_URL}/mcp"
 echo "OAuth Client ID:  ${OAUTH_CLIENT_ID}"
 echo ""
 echo "Configure your Claude connector with:"
-echo "  Server URL:           ${SERVICE_URL}/mcp"
+echo "  Server URL:           ${SERVER_URL}/mcp"
 echo "  OAuth Client ID:      ${OAUTH_CLIENT_ID}"
-echo "  OAuth Client Secret:  (the secret you entered above)"
+echo "  OAuth Client Secret:  ${OAUTH_CLIENT_SECRET}"
