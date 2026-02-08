@@ -42,4 +42,4 @@ sha2 = "0.10"
 base64 = "0.22"
 rand = "0.9"
 url = "2.5"
-jsonwebtoken = { version = "10", features = ["hmac"] }
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
