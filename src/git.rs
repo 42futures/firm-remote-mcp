@@ -110,13 +110,21 @@ fn checkout_mcp_branch_sync(config: &GitConfig) -> Result<(), GitError> {
         .is_ok();
 
     if !branch_exists {
+        // Prefer origin/mcp if it exists, fall back to origin/main
+        let remote_ref = format!("refs/remotes/origin/{}", config.branch);
+        let origin = repo.find_reference(&remote_ref).or_else(|_| {
+            log::info!(
+                "Remote branch '{}' not found, using origin/main",
+                config.branch
+            );
+            repo.find_reference("refs/remotes/origin/main")
+        })?;
+        let commit = origin.peel_to_commit()?;
         log::info!(
-            "Creating branch '{}' from origin/main...",
-            config.branch
+            "Creating branch '{}' from {}...",
+            config.branch,
+            origin.name().unwrap_or("unknown")
         );
-        // Find origin/main commit
-        let origin_main = repo.find_reference("refs/remotes/origin/main")?;
-        let commit = origin_main.peel_to_commit()?;
         repo.branch(&config.branch, &commit, false)?;
     }
 
