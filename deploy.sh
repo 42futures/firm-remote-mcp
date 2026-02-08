@@ -50,6 +50,21 @@ echo "==> Syncing secrets..."
 upsert_secret "github-token" "${GITHUB_TOKEN}"
 upsert_secret "oauth-client-secret" "${OAUTH_CLIENT_SECRET}"
 
+# --- Resolve SERVER_URL ---
+if [ -z "${SERVER_URL:-}" ]; then
+  # Try querying existing service, fall back to constructing from Cloud Run URL pattern
+  SERVER_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+    --region "${REGION}" \
+    --project "${PROJECT_ID}" \
+    --format "value(status.url)" 2>/dev/null || true)
+fi
+if [ -z "${SERVER_URL:-}" ]; then
+  PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format "value(projectNumber)")
+  SERVER_URL="https://${SERVICE_NAME}-${PROJECT_NUMBER}.${REGION}.run.app"
+fi
+
+echo "==> Using SERVER_URL=${SERVER_URL}"
+
 # --- Build and deploy ---
 echo "==> Building and deploying..."
 gcloud run deploy "${SERVICE_NAME}" \
@@ -60,24 +75,12 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars "REPO_URL=${REPO_URL}" \
   --set-env-vars "BRANCH=${BRANCH}" \
   --set-env-vars "OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}" \
+  --set-env-vars "SERVER_URL=${SERVER_URL}" \
+  --set-env-vars "RUST_LOG=info" \
   --set-secrets "GITHUB_TOKEN=github-token:latest" \
   --set-secrets "OAUTH_CLIENT_SECRET=oauth-client-secret:latest" \
   --max-instances 1 \
-  --set-env-vars "RUST_LOG=info" \
   --timeout 300 \
-  --quiet
-
-# --- Get service URL and set SERVER_URL ---
-SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
-  --region "${REGION}" \
-  --project "${PROJECT_ID}" \
-  --format "value(status.url)")
-
-echo "==> Setting SERVER_URL=${SERVICE_URL}"
-gcloud run services update "${SERVICE_NAME}" \
-  --region "${REGION}" \
-  --project "${PROJECT_ID}" \
-  --set-env-vars "SERVER_URL=${SERVICE_URL}" \
   --quiet
 
 echo ""
