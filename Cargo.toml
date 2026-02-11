@@ -5,6 +5,10 @@ edition = "2024"
 description = "Remote MCP server for Firm workspaces, deployed on Cloud Run."
 license = "AGPL-3.0"
 
+[lib]
+name = "firm_remote_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "firm-remote-mcp"
 path = "src/main.rs"
@@ -43,3 +47,8 @@ base64 = "0.22"
 rand = "0.9"
 url = "2.5"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"

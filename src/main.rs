@@ -1,7 +1,4 @@
-mod auth;
-mod config;
-mod git;
-mod server;
+use firm_remote_mcp::{auth, config, git, server};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +10,7 @@ use rmcp::transport::streamable_http_server::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::git::GitConfig;
+use firm_remote_mcp::git::GitConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

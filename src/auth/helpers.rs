@@ -65,3 +65,33 @@ pub(super) fn www_authenticate(server_url: &str) -> String {
         server_url
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pkce_s256_valid_pair() {
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let hash = Sha256::digest(verifier.as_bytes());
+        let challenge = URL_SAFE_NO_PAD.encode(hash);
+        assert!(verify_pkce_s256(verifier, &challenge));
+    }
+
+    #[test]
+    fn pkce_s256_wrong_verifier() {
+        let verifier = "correct-verifier";
+        let hash = Sha256::digest(verifier.as_bytes());
+        let challenge = URL_SAFE_NO_PAD.encode(hash);
+        assert!(!verify_pkce_s256("wrong-verifier", &challenge));
+    }
+
+    #[test]
+    fn www_authenticate_format() {
+        let result = www_authenticate("https://example.com");
+        assert_eq!(
+            result,
+            "Bearer resource_metadata=\"https://example.com/.well-known/oauth-protected-resource\""
+        );
+    }
+}
