@@ -623,7 +623,7 @@ dependencies = [
 [[package]]
 name = "firm_core"
 version = "0.5.0"
-source = "git+https://github.com/42futures/firm?branch=main#7c3a1cf3e2c44aa5dda7cad0d14cebdf18581323"
+source = "git+https://github.com/42futures/firm?branch=main#8ca98b62deb5bde557ff9790e310528ff361b90f"
 dependencies = [
  "chrono",
  "convert_case",
@@ -638,7 +638,7 @@ dependencies = [
 [[package]]
 name = "firm_lang"
 version = "0.5.0"
-source = "git+https://github.com/42futures/firm?branch=main#7c3a1cf3e2c44aa5dda7cad0d14cebdf18581323"
+source = "git+https://github.com/42futures/firm?branch=main#8ca98b62deb5bde557ff9790e310528ff361b90f"
 dependencies = [
  "chrono",
  "firm_core",
@@ -655,7 +655,7 @@ dependencies = [
 [[package]]
 name = "firm_mcp"
 version = "0.5.0"
-source = "git+https://github.com/42futures/firm?branch=main#7c3a1cf3e2c44aa5dda7cad0d14cebdf18581323"
+source = "git+https://github.com/42futures/firm?branch=main#8ca98b62deb5bde557ff9790e310528ff361b90f"
 dependencies = [
  "chrono",
  "firm_core",
@@ -2496,7 +2496,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-firm"
 version = "0.1.0"
-source = "git+https://github.com/42futures/firm?branch=main#7c3a1cf3e2c44aa5dda7cad0d14cebdf18581323"
+source = "git+https://github.com/42futures/firm?branch=main#8ca98b62deb5bde557ff9790e310528ff361b90f"
 dependencies = [
  "cc",
  "tree-sitter-language",

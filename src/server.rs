@@ -8,9 +8,9 @@ use rmcp::{
 
 use firm_mcp::resources;
 use firm_mcp::tools::{
-    self, AddEntityParams, BuildParams, DslReferenceParams, FindSourceParams, GetParams,
-    ListParams, QueryParams, ReadSourceParams, RelatedParams, ReplaceSourceParams,
-    WriteSourceParams,
+    self, AddEntityParams, BuildParams, DeleteSourceParams, DslReferenceParams, FindSourceParams,
+    GetParams, ListParams, QueryParams, ReadSourceParams, RelatedParams, ReplaceSourceParams,
+    SearchSourceParams, SourceTreeParams, WriteSourceParams,
 };
 use firm_mcp::FirmMcpServer;
 
@@ -160,6 +160,44 @@ impl RemoteFirmServer {
     ) -> Result<CallToolResult, McpError> {
         debug!("Tool: dsl_reference, topic={}", params.topic);
         Ok(tools::dsl_reference::execute(&params))
+    }
+
+    #[tool(
+        description = "Show the file tree of all .firm source files in the workspace. \
+        Use this to understand the file layout before reading, writing, or organizing source files."
+    )]
+    async fn source_tree(
+        &self,
+        #[allow(unused_variables)] Parameters(params): Parameters<SourceTreeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("Tool: source_tree");
+        let state = self.firm.state().lock().await;
+        Ok(tools::source_tree::execute(
+            &state.workspace,
+            self.firm.workspace_path(),
+        ))
+    }
+
+    #[tool(
+        description = "Search for a text string across all .firm source files. \
+        Returns matching lines with file paths and line numbers. \
+        Case-insensitive by default. \
+        Use this to find where entities, fields, or values are defined or referenced."
+    )]
+    async fn search_source(
+        &self,
+        Parameters(params): Parameters<SearchSourceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!(
+            "Tool: search_source, query={}, case_sensitive={}",
+            params.query, params.case_sensitive
+        );
+        let state = self.firm.state().lock().await;
+        Ok(tools::search_source::execute(
+            &state.workspace,
+            self.firm.workspace_path(),
+            &params,
+        ))
     }
 
     // -- Build tool --
@@ -386,6 +424,67 @@ impl RemoteFirmServer {
                         write_result.original_content,
                     );
                     Ok(tools::replace_source::validation_error_result(
+                        &e.to_string(),
+                        rollback_success,
+                    ))
+                }
+            }
+        }
+    }
+    #[tool(description = "Delete a .firm source file from the workspace. \
+        If deletion breaks the workspace (e.g. other files reference entities in the deleted file), \
+        the file is restored unless 'force' is true. \
+        Changes are committed and pushed to the mcp branch for review. \
+        Use 'find_source' to locate the file path first.")]
+    async fn delete_source(
+        &self,
+        Parameters(params): Parameters<DeleteSourceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!(
+            "Tool: delete_source, path={}, force={}",
+            params.path, params.force
+        );
+
+        let delete_result = match tools::delete_source::execute(self.firm.workspace_path(), &params)
+        {
+            Ok(result) => result,
+            Err(e) => return Ok(tools::build::error_result(&e)),
+        };
+
+        match self.firm.rebuild().await {
+            Ok(_) => {
+                let mut result = tools::delete_source::success_result(&params.path);
+                let git_warn = self
+                    .git_commit_and_push(&format!("Delete source '{}' via MCP", params.path))
+                    .await;
+                if let Some(warn) = git_warn {
+                    result.content.push(Content::text(warn));
+                }
+                Ok(result)
+            }
+            Err(e) => {
+                if params.force {
+                    let mut result = tools::delete_source::force_success_result(
+                        &params.path,
+                        &e.to_string(),
+                    );
+                    let git_warn = self
+                        .git_commit_and_push(&format!(
+                            "Delete source '{}' via MCP (force)",
+                            params.path
+                        ))
+                        .await;
+                    if let Some(warn) = git_warn {
+                        result.content.push(Content::text(warn));
+                    }
+                    Ok(result)
+                } else {
+                    let rollback_success = tools::delete_source::rollback(
+                        self.firm.workspace_path(),
+                        &params.path,
+                        &delete_result.original_content,
+                    );
+                    Ok(tools::delete_source::validation_error_result(
                         &e.to_string(),
                         rollback_success,
                     ))
