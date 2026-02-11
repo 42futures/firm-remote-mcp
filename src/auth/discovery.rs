@@ -21,7 +21,6 @@ pub async fn authorization_server_metadata(
         "issuer": issuer,
         "authorization_endpoint": format!("{}/authorize", issuer),
         "token_endpoint": format!("{}/token", issuer),
-        "registration_endpoint": format!("{}/register", issuer),
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "token_endpoint_auth_methods_supported": ["client_secret_post"],

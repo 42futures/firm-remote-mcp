@@ -12,26 +12,10 @@ async fn do_full_oauth_flow(
     app: &axum::Router,
 ) -> (String, String) {
     let (verifier, challenge) = pkce_pair();
+    let client_id = "test-client-id";
+    let client_secret = "test-client-secret";
 
-    // 1. Register
-    let resp = app
-        .clone()
-        .oneshot(
-            axum::http::Request::builder()
-                .method("POST")
-                .uri("/register")
-                .header("Content-Type", "application/json")
-                .body(Body::from(r#"{"redirect_uris":["https://callback.example.com/cb"]}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-    let reg = body_json(resp).await;
-    let client_id = reg["client_id"].as_str().unwrap().to_string();
-    let client_secret = reg["client_secret"].as_str().unwrap().to_string();
-
-    // 2. Authorize
+    // 1. Authorize
     let auth_uri = format!(
         "/authorize?response_type=code&client_id={}&code_challenge={}&code_challenge_method=S256&redirect_uri=https://callback.example.com/cb",
         client_id, challenge
@@ -56,7 +40,7 @@ async fn do_full_oauth_flow(
         .1
         .to_string();
 
-    // 3. Token exchange
+    // 2. Token exchange
     let token_body = format!(
         "grant_type=authorization_code&code={}&code_verifier={}&redirect_uri=https://callback.example.com/cb&client_id={}&client_secret={}",
         code, verifier, client_id, client_secret
@@ -374,9 +358,52 @@ async fn authorization_server_metadata_returns_correct_json() {
     assert_eq!(json["issuer"], "https://test.example.com");
     assert_eq!(json["authorization_endpoint"], "https://test.example.com/authorize");
     assert_eq!(json["token_endpoint"], "https://test.example.com/token");
-    assert_eq!(json["registration_endpoint"], "https://test.example.com/register");
+    assert!(json.get("registration_endpoint").is_none());
     assert_eq!(json["response_types_supported"][0], "code");
     assert_eq!(json["grant_types_supported"][0], "authorization_code");
     assert_eq!(json["grant_types_supported"][1], "refresh_token");
     assert_eq!(json["code_challenge_methods_supported"][0], "S256");
+}
+
+// ── Registration disabled ──
+
+#[tokio::test]
+async fn register_returns_405() {
+    let state = test_oauth_state();
+    let app = auth_router(state);
+
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/register")
+                .header("Content-Type", "application/json")
+                .body(Body::from(r#"{"redirect_uris":["https://callback.example.com/cb"]}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 405);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"], "invalid_request");
+    assert!(json["error_description"].as_str().unwrap().contains("not supported"));
+}
+
+#[tokio::test]
+async fn discovery_metadata_omits_registration_endpoint() {
+    let state = test_oauth_state();
+    let app = auth_router(state);
+
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/.well-known/oauth-authorization-server")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let json = body_json(resp).await;
+    assert!(json.get("registration_endpoint").is_none(), "registration_endpoint should not be present in discovery metadata");
 }
