@@ -39,6 +39,14 @@ pub async fn authorize(
         );
     }
 
+    if !state.allowed_redirect_uris.iter().any(|uri| uri == &params.redirect_uri) {
+        // RFC 6749 §4.1.2.1: MUST NOT redirect to an unregistered URI.
+        return json_response(400, serde_json::json!({
+            "error": "invalid_request",
+            "error_description": "Redirect URI is not registered"
+        }));
+    }
+
     if params.code_challenge_method != "S256" {
         return error_redirect(
             &params.redirect_uri, "invalid_request",

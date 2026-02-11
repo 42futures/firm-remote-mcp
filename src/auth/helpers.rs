@@ -4,6 +4,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::Rng;
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 
 pub(super) fn generate_token(len: usize) -> String {
     let bytes: Vec<u8> = (0..len).map(|_| rand::rng().random::<u8>()).collect();
@@ -13,7 +14,7 @@ pub(super) fn generate_token(len: usize) -> String {
 pub(super) fn verify_pkce_s256(code_verifier: &str, code_challenge: &str) -> bool {
     let hash = Sha256::digest(code_verifier.as_bytes());
     let computed = URL_SAFE_NO_PAD.encode(hash);
-    computed == code_challenge
+    computed.as_bytes().ct_eq(code_challenge.as_bytes()).into()
 }
 
 pub(super) fn json_response(status: u16, body: serde_json::Value) -> Response {

@@ -199,6 +199,31 @@ async fn authorize_wrong_client_id_redirects_with_error() {
 }
 
 #[tokio::test]
+async fn authorize_unregistered_redirect_uri_returns_400() {
+    let state = test_oauth_state();
+    let app = auth_router(state);
+    let (_, challenge) = pkce_pair();
+
+    let uri = format!(
+        "/authorize?response_type=code&client_id=test-client-id&code_challenge={}&code_challenge_method=S256&redirect_uri=https://evil.example.com/steal",
+        challenge
+    );
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(&uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"], "invalid_request");
+    assert!(json["error_description"].as_str().unwrap().contains("not registered"));
+}
+
+#[tokio::test]
 async fn authorize_invalid_challenge_method_redirects_with_error() {
     let state = test_oauth_state();
     let app = auth_router(state);

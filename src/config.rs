@@ -22,6 +22,8 @@ pub struct Config {
     pub port: u16,
     /// Optional subdirectory within the repo containing the Firm workspace.
     pub workspace_subdir: Option<String>,
+    /// Allowed OAuth redirect URIs (comma-separated via ALLOWED_REDIRECT_URIS env var).
+    pub allowed_redirect_uris: Vec<String>,
 }
 
 impl Config {
@@ -48,6 +50,16 @@ impl Config {
 
         let workspace_subdir = env::var("WORKSPACE_SUBDIR").ok();
 
+        let allowed_redirect_uris: Vec<String> = env::var("ALLOWED_REDIRECT_URIS")
+            .map_err(|_| "ALLOWED_REDIRECT_URIS environment variable is required")?
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if allowed_redirect_uris.is_empty() {
+            return Err("ALLOWED_REDIRECT_URIS must contain at least one URI".into());
+        }
+
         // Strip trailing slash from server_url for consistency
         let server_url = server_url.trim_end_matches('/').to_string();
 
@@ -61,6 +73,7 @@ impl Config {
             server_url,
             port,
             workspace_subdir,
+            allowed_redirect_uris,
         })
     }
 }

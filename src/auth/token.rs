@@ -1,4 +1,5 @@
 use axum::response::{IntoResponse, Json, Response};
+use subtle::ConstantTimeEq;
 
 use super::helpers::{token_error, verify_pkce_s256};
 use super::jwt::ACCESS_TOKEN_TTL_SECS;
@@ -21,10 +22,12 @@ pub async fn token(
     axum::extract::State(state): axum::extract::State<OAuthState>,
     axum::Form(params): axum::Form<TokenRequest>,
 ) -> Response {
-    // Validate client credentials
+    // Validate client credentials (constant-time to prevent timing attacks)
     let cid = params.client_id.as_deref().unwrap_or("");
     let csecret = params.client_secret.as_deref().unwrap_or("");
-    if cid != state.client_id || csecret != state.client_secret {
+    let id_match = cid.as_bytes().ct_eq(state.client_id.as_bytes());
+    let secret_match = csecret.as_bytes().ct_eq(state.client_secret.as_bytes());
+    if !bool::from(id_match & secret_match) {
         return token_error(401, "invalid_client", "Invalid client credentials");
     }
 

@@ -16,6 +16,7 @@ pub fn test_oauth_state() -> OAuthState {
         "test-client-secret".into(),
         "https://test.example.com".into(),
         "test-jwt-signing-key-for-tests".into(),
+        vec!["https://callback.example.com/cb".into()],
     )
 }
 

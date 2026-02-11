@@ -69,6 +69,7 @@ mod tests {
             "test-secret".into(),
             "https://example.com".into(),
             key.into(),
+            vec![],
         )
     }
 

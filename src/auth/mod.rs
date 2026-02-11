@@ -36,6 +36,7 @@ pub struct OAuthState {
     pub(crate) client_id: String,
     pub(crate) client_secret: String,
     pub(crate) server_url: String,
+    pub(crate) allowed_redirect_uris: Vec<String>,
     pub(crate) encoding_key: EncodingKey,
     pub(crate) decoding_key: DecodingKey,
     pub(crate) codes: Arc<Mutex<HashMap<String, AuthCode>>>,
@@ -47,6 +48,7 @@ impl OAuthState {
         client_secret: String,
         server_url: String,
         jwt_signing_key: String,
+        allowed_redirect_uris: Vec<String>,
     ) -> Self {
         let encoding_key = EncodingKey::from_secret(jwt_signing_key.as_bytes());
         let decoding_key = DecodingKey::from_secret(jwt_signing_key.as_bytes());
@@ -54,6 +56,7 @@ impl OAuthState {
             client_id,
             client_secret,
             server_url,
+            allowed_redirect_uris,
             encoding_key,
             decoding_key,
             codes: Default::default(),
