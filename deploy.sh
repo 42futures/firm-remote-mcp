@@ -89,7 +89,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars "REPO_URL=${REPO_URL}" \
   --set-env-vars "BRANCH=${BRANCH}" \
   --set-env-vars "OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}" \
-  --set-env-vars "ALLOWED_REDIRECT_URIS=${ALLOWED_REDIRECT_URIS}" \
+  --set-env-vars "^;;^ALLOWED_REDIRECT_URIS=${ALLOWED_REDIRECT_URIS}" \
   --set-env-vars "SERVER_URL=${SERVER_URL}" \
   --set-env-vars "RUST_LOG=info" \
   ${WORKSPACE_SUBDIR:+--set-env-vars "WORKSPACE_SUBDIR=${WORKSPACE_SUBDIR}"} \
