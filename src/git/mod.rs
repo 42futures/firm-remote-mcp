@@ -53,7 +53,7 @@ pub(crate) fn fetch_options(token: &str) -> FetchOptions<'_> {
     let mut callbacks = RemoteCallbacks::new();
     let token = token.to_string();
     callbacks.credentials(move |_url, _username, _allowed| {
-        Cred::userpass_plaintext("x-access-token", &token)
+        Cred::userpass_plaintext("oauth2", &token)
     });
     let mut opts = FetchOptions::new();
     opts.remote_callbacks(callbacks);
@@ -64,7 +64,7 @@ pub(crate) fn push_options(token: &str) -> PushOptions<'_> {
     let mut callbacks = RemoteCallbacks::new();
     let token = token.to_string();
     callbacks.credentials(move |_url, _username, _allowed| {
-        Cred::userpass_plaintext("x-access-token", &token)
+        Cred::userpass_plaintext("oauth2", &token)
     });
     let mut opts = PushOptions::new();
     opts.remote_callbacks(callbacks);

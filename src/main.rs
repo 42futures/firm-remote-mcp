@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         repo_path: repo_path.clone(),
         remote_url: config.repo_url.clone(),
         branch: config.branch.clone(),
-        token: config.github_token.clone(),
+        token: config.git_token.clone(),
     };
 
     // 3. Clone or fetch the repo

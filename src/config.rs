@@ -7,8 +7,8 @@ pub struct Config {
     pub repo_url: String,
     /// MCP working branch name.
     pub branch: String,
-    /// GitHub PAT for git push authentication.
-    pub github_token: String,
+    /// Git token for clone/push authentication (GitHub PAT or GitLab PAT).
+    pub git_token: String,
     /// OAuth client ID (entered in Claude connector UI).
     pub oauth_client_id: String,
     /// OAuth client secret (entered in Claude connector UI).
@@ -30,8 +30,8 @@ impl Config {
     pub fn from_env() -> Result<Self, String> {
         let repo_url =
             env::var("REPO_URL").map_err(|_| "REPO_URL environment variable is required")?;
-        let github_token = env::var("GITHUB_TOKEN")
-            .map_err(|_| "GITHUB_TOKEN environment variable is required")?;
+        let git_token = env::var("GIT_TOKEN")
+            .map_err(|_| "GIT_TOKEN environment variable is required")?;
         let oauth_client_id = env::var("OAUTH_CLIENT_ID")
             .map_err(|_| "OAUTH_CLIENT_ID environment variable is required")?;
         let oauth_client_secret = env::var("OAUTH_CLIENT_SECRET")
@@ -66,7 +66,7 @@ impl Config {
         Ok(Config {
             repo_url,
             branch,
-            github_token,
+            git_token,
             oauth_client_id,
             oauth_client_secret,
             jwt_signing_key,
